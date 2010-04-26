@@ -1,3 +1,7 @@
+//	UKCrashReporter_RTCmod.h
+//	A modification of UKCrashReporter to support sending crash reports via JRFeedbackController
+//	All modifications to UKCrashReporter are commented.
+	
 //
 //  UKCrashReporter.m
 //  NiftyFeatures
@@ -32,6 +36,7 @@
 #import "UKCrashReporter.h"
 #import "UKSystemInfo.h"
 #import <AddressBook/AddressBook.h>
+#import "JRFeedbackController.h"
 
 
 NSString*	UKCrashReporterFindTenFiveCrashReportPath( NSString* appName, NSString* crashLogsFolder );
@@ -53,7 +58,10 @@ NSString*	UKCrashReporterFindTenFiveCrashReportPath( NSString* appName, NSString
 //		application.
 // -----------------------------------------------------------------------------
 
-void	UKCrashReporterCheckForCrash()
+// As noted in the header, this function has been renamed to add the useJRFeedback flag.
+// Was void	UKCrashReporterCheckForCrash()
+
+void	UKCrashReporterCheckForCrashUsingJRFeedbackController( BOOL useJRFeedback )
 {
 	NSAutoreleasePool*	pool = [[NSAutoreleasePool alloc] init];
 	
@@ -76,11 +84,30 @@ void	UKCrashReporterCheckForCrash()
 		NSString*		crashLogsFolder = [@"~/Library/Logs/CrashReporter/" stringByExpandingTildeInPath];
 		NSString*		crashLogName = [appName stringByAppendingString: @".crash.log"];
 		NSString*		crashLogPath = nil;
+		
+		// RTC modification: fileAttributesAtPath:traverseLink: is deprecated in 10.5, so this:
+		/*
 		if( !isTenFiveOrBetter )
 			crashLogPath = [crashLogsFolder stringByAppendingPathComponent: crashLogName];
 		else
 			crashLogPath = UKCrashReporterFindTenFiveCrashReportPath( appName, crashLogsFolder );
 		NSDictionary*	fileAttrs = [[NSFileManager defaultManager] fileAttributesAtPath: crashLogPath traverseLink: YES];
+		*/
+		// becomes this:
+		NSDictionary*	fileAttrs = nil;
+		if( !isTenFiveOrBetter ) {
+			crashLogPath = [crashLogsFolder stringByAppendingPathComponent: crashLogName];
+			fileAttrs = [[NSFileManager defaultManager] attributesOfItemAtPath:crashLogPath error:NULL];
+		} else {
+			crashLogPath = UKCrashReporterFindTenFiveCrashReportPath( appName, crashLogsFolder );
+			fileAttrs = [[NSFileManager defaultManager] fileAttributesAtPath: crashLogPath traverseLink: YES];
+			if ([fileAttrs fileType] == NSFileTypeSymbolicLink) {
+				NSString *symLinkPath = [[NSFileManager defaultManager] destinationOfSymbolicLinkAtPath:crashLogPath error:NULL];
+				fileAttrs = [[NSFileManager defaultManager] attributesOfItemAtPath:symLinkPath error:NULL];
+			}
+		}
+		// end of this mod
+		
 		NSDate*			lastTimeCrashLogged = (fileAttrs == nil) ? nil : [fileAttrs fileModificationDate];
 		NSTimeInterval	lastCrashReportInterval = [[NSUserDefaults standardUserDefaults] floatForKey: @"UKCrashReporterLastCrashReportDate"];
 		NSDate*			lastTimeCrashReported = [NSDate dateWithTimeIntervalSince1970: lastCrashReportInterval];
@@ -105,7 +132,31 @@ void	UKCrashReporterCheckForCrash()
 									[[NSUserDefaults standardUserDefaults] persistentDomainForName: [[NSBundle mainBundle] bundleIdentifier]]];
 				
 				// Now show a crash reporter window so the user can edit the info to send:
-				[[UKCrashReporter alloc] initWithLogString: currentReport];
+				
+				// RTC modification: replace next line:
+				/* [[UKCrashReporter alloc] initWithLogString: currentReport] */
+				// with this:
+				
+				if (useJRFeedback) {
+					// Update prefs now to suppress this crash log from appearing again:
+					[[NSUserDefaults standardUserDefaults] setFloat: [[NSDate date] timeIntervalSince1970] forKey: @"UKCrashReporterLastCrashReportDate"];
+					[[NSUserDefaults standardUserDefaults] synchronize];
+					// show an alert:
+					NSString *messageText = NSLocalizedString(@"%@ found a crash report.", @"%@ found a crash report. (message)");
+					messageText = [NSString stringWithFormat:messageText, appName];
+
+					NSString *informativeText = NSLocalizedString(@"It looks like %@ crashed recently. You can help by sending the crash report to the %@ developers.", @"It looks like %@ crashed recently. You can help by sending the crash report to the %@ developers. (informative)");
+					informativeText = [NSString stringWithFormat:informativeText, appName];
+
+					NSAlert *alert = [NSAlert alertWithMessageText:messageText defaultButton:nil alternateButton:NSLocalizedString(@"Cancel", @"Cancel button title") otherButton:nil informativeTextWithFormat:informativeText];
+					[alert setAlertStyle:NSInformationalAlertStyle];
+					if ([alert runModal] == NSAlertDefaultReturn) {
+						[JRFeedbackController showFeedbackWithBugDetails:currentReport];
+					}
+				} else {
+					[[UKCrashReporter alloc] initWithLogString: currentReport];
+				}
+				// end of this mod
 			}
 		}
 	NS_HANDLER

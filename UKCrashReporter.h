@@ -1,3 +1,7 @@
+//	UKCrashReporter_RTCmod.h
+//	A modification of UKCrashReporter to support sending crash reports via JRFeedbackController
+//	All modifications to UKCrashReporter are commented.
+	
 //
 //  UKCrashReporter.h
 //  NiftyFeatures
@@ -45,7 +49,13 @@
 	URLs for different locales that way, in case a crash is caused by an error
 	in a localized file.
 */
-void	UKCrashReporterCheckForCrash();
+
+/* This mod adds a BOOL flag to the function to specify whether to use JRFeedbackProvider.
+	This is the only mod to the header file.
+*/ 
+
+//void	UKCrashReporterCheckForCrash();
+void	UKCrashReporterCheckForCrashUsingJRFeedbackController( BOOL useJRFeedback );
 
 
 // -----------------------------------------------------------------------------
